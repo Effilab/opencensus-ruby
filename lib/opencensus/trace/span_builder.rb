@@ -333,7 +333,7 @@ module OpenCensus
         @stack_trace =
           case stack_trace
           when Integer
-            caller_locations(stack_trace + 2).map(&:to_s)
+            caller_locations(stack_trace + 2)
           when Array
             stack_trace
           else
@@ -435,7 +435,7 @@ module OpenCensus
         @links = []
         @status_code = nil
         @status_message = nil
-        @stack_trace = caller_locations(skip_frames + 2).map(&:to_s)
+        @stack_trace = caller_locations(skip_frames + 2)
       end
 
       ##
