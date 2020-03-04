@@ -48,7 +48,7 @@ module OpenCensus
       # but not the effect of other middleware, including middlware that is
       # part of the Rails stack or any custom middleware you have installed.
       # If you would rather place the middleware at the beginning of the stack
-      # where it surrounds all other middleware, set the this configuration:
+      # where it surrounds all other middleware, set this configuration:
       #
       #     OpenCensus::Trace.config do |config|
       #       config.middleware_placement = :begin
@@ -72,10 +72,20 @@ module OpenCensus
       #
       #     config.opencensus.trace.middleware_placement = ::Rails::Rack::Logger
       #
+      # You can also set the following configuration options:
+      # * `path_sanitize_proc` defaults to return the path that is passed to it.
+      #   You can use this to manipulate the path provided to the span, which
+      #   might be useful if it contains IDs, thereby creating distinct spans
+      #   for the same application endpoint.
+      #   For example this will remove all numbers from your path:
+      #     configuration.path_sanitize_proc = ->(path) { path.gsub(/\d+/, "*")}
+      #   (The full path will be added as an attribute named 'http.path')
       class Rails < ::Rails::Railtie
         OpenCensus::Trace.configure do |c|
           c.add_option! :middleware_placement, :end,
                         match: [:begin, :end, Class]
+
+          c.add_option! :path_sanitize_proc, ->(path) { path }
         end
 
         unless config.respond_to? :opencensus
