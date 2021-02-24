@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-require "active_support"
 require "rails/railtie"
 require "opencensus/trace/integrations/rack_middleware"
+require "opencensus/trace/integrations/active_support"
 
 module OpenCensus
   module Trace
@@ -39,25 +38,8 @@ module OpenCensus
       #
       # ### Configuring ActiveSupport Notifications
       #
-      # This Railtie also provides a `notifications` configuration that
-      # supports the following fields:
-      #
-      # * `events` An array of strings indicating the events that will
-      #   trigger the creation of spans. The default value is
-      #   {OpenCensus::Trace::Integrations::Rails::DEFAULT_NOTIFICATION_EVENTS}.
-      # * `attribute_namespace` A string that will be prepended to all
-      #   attributes copied from the event payload. Defaults to "`rails/`"
-      #
-      # You can access these in the `notifications` subconfiguration under
-      # the trace configuration. For example:
-      #
-      #     OpenCensus::Trace.config do |config|
-      #       config.notifications.attribute_namespace = "myapp/"
-      #     end
-      #
-      # Or, using Rails:
-      #
-      #     config.opencensus.trace.notifications.attribute_namespace = "myapp/"
+      # See OpenCensus::Trace::Integrations::ActiveSupport for information on
+      # ActiveSupport notifications
       #
       # ### Configuring Middleware Placement
       #
@@ -66,7 +48,7 @@ module OpenCensus
       # but not the effect of other middleware, including middlware that is
       # part of the Rails stack or any custom middleware you have installed.
       # If you would rather place the middleware at the beginning of the stack
-      # where it surrounds all other middleware, set the this configuration:
+      # where it surrounds all other middleware, set this configuration:
       #
       #     OpenCensus::Trace.config do |config|
       #       config.middleware_placement = :begin
@@ -90,27 +72,20 @@ module OpenCensus
       #
       #     config.opencensus.trace.middleware_placement = ::Rails::Rack::Logger
       #
+      # You can also set the following configuration options:
+      # * `path_sanitize_proc` defaults to return the path that is passed to it.
+      #   You can use this to manipulate the path provided to the span, which
+      #   might be useful if it contains IDs, thereby creating distinct spans
+      #   for the same application endpoint.
+      #   For example this will remove all numbers from your path:
+      #     configuration.path_sanitize_proc = ->(path) { path.gsub(/\d+/, "*")}
+      #   (The full path will be added as an attribute named 'http.path')
       class Rails < ::Rails::Railtie
-        ##
-        # The ActiveSupport notifications that will be reported as spans by
-        # default. To change this list, update the value of the
-        # `trace.notifications.events` configuration.
-        #
-        DEFAULT_NOTIFICATION_EVENTS = [
-          "sql.active_record",
-          "render_template.action_view",
-          "send_file.action_controller",
-          "send_data.action_controller",
-          "deliver.action_mailer"
-        ].freeze
-
         OpenCensus::Trace.configure do |c|
-          c.add_config! :notifications do |rc|
-            rc.add_option! :events, DEFAULT_NOTIFICATION_EVENTS.dup
-            rc.add_option! :attribute_namespace, "rails/"
-          end
           c.add_option! :middleware_placement, :end,
                         match: [:begin, :end, Class]
+
+          c.add_option! :path_sanitize_proc, ->(path) { path }
         end
 
         unless config.respond_to? :opencensus
@@ -119,7 +94,6 @@ module OpenCensus
 
         initializer "opencensus.trace" do |app|
           setup_middleware app.middleware
-          setup_notifications
         end
 
         ##
@@ -135,36 +109,6 @@ module OpenCensus
             middleware_stack.unshift RackMiddleware
           else
             middleware_stack.use RackMiddleware
-          end
-        end
-
-        ##
-        # Initialize notifications
-        # @private
-        #
-        def setup_notifications
-          OpenCensus::Trace.configure.notifications.events.each do |type|
-            ActiveSupport::Notifications.subscribe(type) do |*args|
-              event = ActiveSupport::Notifications::Event.new(*args)
-              handle_notification_event event
-            end
-          end
-        end
-
-        ##
-        # Add a span based on a notification event.
-        # @private
-        #
-        def handle_notification_event event
-          span_context = OpenCensus::Trace.span_context
-          if span_context
-            ns = OpenCensus::Trace.configure.notifications.attribute_namespace
-            span = span_context.start_span event.name, skip_frames: 2
-            span.start_time = event.time
-            span.end_time = event.end
-            event.payload.each do |k, v|
-              span.put_attribute "#{ns}#{k}", v.to_s
-            end
           end
         end
       end

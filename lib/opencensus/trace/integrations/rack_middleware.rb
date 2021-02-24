@@ -77,7 +77,11 @@ module OpenCensus
             trace_context: context,
             same_process_as_parent: false do |span_context|
             begin
-              Trace.in_span get_path(env) do |span|
+              path = get_path(env)
+
+              sanitized_path = configuration.path_sanitize_proc.call(path)
+
+              Trace.in_span sanitized_path do |span|
                 start_request span, env
                 @app.call(env).tap do |response|
                   finish_request span, response
@@ -90,6 +94,12 @@ module OpenCensus
         end
 
         private
+
+        ##
+        # @private Get OpenCensus config
+        def configuration
+          OpenCensus::Trace.config
+        end
 
         def get_path env
           path = "#{env['SCRIPT_NAME']}#{env['PATH_INFO']}"
